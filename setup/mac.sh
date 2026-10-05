@@ -53,13 +53,24 @@ else
     run nix-darwin/master#darwin-rebuild -- switch --flake "$DOTFILES_DIR#mac"
 fi
 
-# Install nvm and a default Node.js if missing
-export NVM_DIR="$HOME/.nvm"
-if [ ! -d "$NVM_DIR" ]; then
-  PROFILE=/dev/null bash -c 'curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash'
-  # shellcheck disable=SC1091
-  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-  nvm install --lts
+# Clone the (private) stow dotfiles and link nvim, tmux, vim, wezterm into
+# $HOME. gh and stow come from Homebrew; gh's clone uses the Command Line
+# Tools git that the Homebrew installer set up. (Overridable so tests can
+# point at stubs.)
+: "${GH_BIN:=/opt/homebrew/bin/gh}"
+: "${STOW_BIN:=/opt/homebrew/bin/stow}"
+STOW_DIR="$HOME/dotfiles"
+if [ ! -d "$STOW_DIR" ]; then
+  "$GH_BIN" auth status >/dev/null 2>&1 || "$GH_BIN" auth login --git-protocol https --web
+  "$GH_BIN" repo clone ynotzort/dotfiles "$STOW_DIR"
+fi
+"$STOW_BIN" -d "$STOW_DIR" -t "$HOME" neovim tmux vim wezterm
+
+# Install a default Node.js via fnm (a Homebrew brew in nix/host.nix) if none
+# is installed yet. (FNM_BIN is overridable so tests can point at a stub.)
+: "${FNM_BIN:=/opt/homebrew/bin/fnm}"
+if [ -x "$FNM_BIN" ] && ! "$FNM_BIN" list | grep -q default; then
+  "$FNM_BIN" install --lts
 fi
 
 echo "Bootstrap complete. Restart your shell if needed, then use 'rebuild' or darwin-rebuild for future config changes."

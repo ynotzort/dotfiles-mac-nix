@@ -1,0 +1,448 @@
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+# Initialization code that may require console input (password prompts, [y/n]
+# confirmations, etc.) must go above this block; everything else may go below.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
+
+HISTSIZE=1000000
+SAVEHIST=1000000
+export EDITOR="nvim"
+export VISUAL="nvim"
+
+setopt inc_append_history
+
+# autoload edit-command-line
+# zle -N edit-command-line
+# bindkey '^Xe' edit-command-line
+
+autoload -U edit-command-line
+zle -N edit-command-line
+bindkey -M vicmd v edit-command-line
+bindkey '^xe' edit-command-line
+bindkey '^x^e' edit-command-line
+
+alias notahoe='open "$HOME/.config/deferral-90days.mobileconfig"; sleep 2; open "x-apple.systempreferences:com.apple.preferences.configurationprofiles"'
+
+
+# Machine-local config (work setup etc.), kept out of this repo
+[ -f ~/.zshrc.local ] && source ~/.zshrc.local
+
+
+# Created by Zap installer
+[ -f "${XDG_DATA_HOME:-$HOME/.local/share}/zap/zap.zsh" ] || git clone --depth 1 -b release-v1 https://github.com/zap-zsh/zap.git "${XDG_DATA_HOME:-$HOME/.local/share}/zap"
+[ -f "${XDG_DATA_HOME:-$HOME/.local/share}/zap/zap.zsh" ] && source "${XDG_DATA_HOME:-$HOME/.local/share}/zap/zap.zsh"
+plug "zsh-users/zsh-autosuggestions"
+# plug "zap-zsh/supercharge"
+# plug "zap-zsh/zap-prompt"
+plug "zsh-users/zsh-syntax-highlighting"
+plug "zap-zsh/vim"
+
+plug "zap-zsh/fzf"
+plug "romkatv/powerlevel10k"
+
+
+atuin-setup() {
+    if ! which atuin &> /dev/null; then return 1; fi
+    bindkey '^E' _atuin_search_widget
+
+    export ATUIN_NOBIND="true"
+    CUR_SHELL=zsh
+    eval "$(atuin init "$CUR_SHELL")"
+    
+    # Atuin history database location
+    _ATUIN_HISTDB="${HOME}/.local/share/atuin/history.db"
+    
+    # FZF command to use
+    ATUIN_FZF_CMD=${ATUIN_FZF_COMMAND:-fzf}
+    
+    # Use gdate if available (provides nanoseconds on mac)
+    if command -v gdate > /dev/null 2>&1; then
+        datecmd='gdate'
+    else
+        datecmd='date'
+    fi
+
+    get_date_format() {
+        local date_format
+        date_format="$(awk '{ print tolower($1) }' <<< "${ATUIN_FZF_FORCE_DATE_FORMAT}")"
+
+        if [[ "${date_format}" != "us" && "${date_format}" != "non-us" ]]; then
+            eval "$(locale)"
+            local lc_time_lang="$(awk -F'.' '{ print tolower($1) }' <<< "${LC_TIME}")"
+            if [[ "${lc_time_lang}" == "en_us" || "${lc_time_lang}" == "c" ]]; then
+                date_format="us"
+            else
+                date_format="non-us"
+            fi
+        fi
+
+        if [[ "${date_format}" == "us" ]]; then
+            echo "%m/%d"
+        else
+            echo "%d/%m"
+        fi
+    }
+
+    # Variables for substitution in log
+    NL="
+"
+    NLT=$(printf "\n\t\t")
+
+    autoload -U colors && colors
+
+    atuin-fzf-log() {
+        if [[ ! -z ${ATUIN_FZF_LOGFILE} ]]; then
+            if [[ ! -f ${ATUIN_FZF_LOGFILE} ]]; then
+                touch ${ATUIN_FZF_LOGFILE}
+            fi
+            printf "%s %s\n" $(${datecmd} +'%s.%N') ${*//$NL/$NLT} >> ${ATUIN_FZF_LOGFILE}
+        fi
+    }
+
+    atuin-fzf-query() {
+        # Query atuin database with fzf specific options
+        local -a opts
+        zparseopts -E -D -a opts s d t a
+
+        local where_clauses=()
+        local everywhere=0
+        local cols="id, command, timestamp, exit, cwd, session, hostname"
+        local groupby="group by command, cwd"
+        local date_format="$(get_date_format)"
+        local current_host="$(hostname):$(whoami)"
+        
+        # Time column formatting
+        local mst="datetime(timestamp/1000000000, 'unixepoch')"
+        local dst="datetime('now', 'start of day')"
+        local yst="datetime('now', 'start of year')"
+        local timecol="strftime(
+                       case when $mst > $dst then
+                          '%H:%M'
+                       else (
+                         case when $mst > $yst then
+                           '${date_format}'
+                         else
+                           '${date_format}/%Y'
+                         end)
+                       end,
+                       timestamp/1000000000,
+                       'unixepoch',
+                       'localtime') as time"
+
+        # Always filter out deleted entries
+        where_clauses+=("deleted_at is null")
+
+        for opt ($opts); do
+            case $opt in
+                -s)
+                    where_clauses+=("session = \"${ATUIN_SESSION}\"")
+                    ;;
+                -d)
+                    where_clauses+=("cwd like \"${PWD}%\"")
+                    ;;
+                -t)
+                    everywhere=1
+                    ;;
+                -a)
+                    atuin-fzf-log "Grouping disabled"
+                    cols="id, command, timestamp, exit, cwd, session, hostname"
+                    timecol="strftime('${date_format} %H:%M', timestamp/1000000000, 'unixepoch', 'localtime') as time"
+                    groupby=""
+                    ;;
+            esac
+        done
+        
+        if [[ $everywhere -eq 0 ]]; then
+            where_clauses+=("hostname = \"${current_host}\"")
+        fi
+
+        # Construct WHERE clause
+        local where=""
+        if [[ ${#where_clauses} -gt 0 ]]; then
+            where="where "
+            local first=1
+            for clause in "${where_clauses[@]}"; do
+                if [[ $first -eq 1 ]]; then
+                    where="${where}${clause}"
+                    first=0
+                else
+                    where="${where} and ${clause}"
+                fi
+            done
+        fi
+
+        local query="
+            select
+            id,
+            ${timecol},
+            CASE exit WHEN 0 THEN '' ELSE '${fg[red]}' END || replace(command, '$NL', ' ') as cmd,
+            CASE exit WHEN 0 THEN '' ELSE '${reset_color}' END
+            from
+            ( select
+                ${cols},
+                max(timestamp) as max_timestamp
+              from
+                history
+              ${where}
+              ${groupby}
+              order
+                by max_timestamp desc
+            )
+            order by max_timestamp desc"
+
+        atuin-fzf-log "query for log '${(Q)query}'"
+
+        # Use Figure Space U+2007 as separator
+        sqlite3 -cmd ".timeout 1000" "${_ATUIN_HISTDB}" -separator ' ' "$query"
+        atuin-fzf-log "query completed"
+    }
+
+    atuin-detail() {
+        local histdb_file=$1
+        local cmd_id=$2
+        local where="(id == '$(sed -e "s/'/''/g" <<< "$cmd_id" | tr -d '\000')')"
+        local date_format="$(get_date_format)"
+        local current_host="$(hostname):$(whoami)"
+
+        local query="
+            select
+              strftime('${date_format}/%Y %H:%M', timestamp/1000000000, 'unixepoch', 'localtime') as time,
+              ifnull(exit, 'NONE') as exit_status,
+              ifnull(duration/1000000, '-----') as secs,
+              ifnull(hostname, '<somewhere>') as host,
+              ifnull(cwd, '<somedir>') as dir,
+              session,
+              id,
+              command as cmd
+            from
+              history
+            where ${where}
+        "
+
+        local result_line="$(sqlite3 -cmd ".timeout 1000" "${histdb_file}" "$query")"
+        
+        if [[ -z "$result_line" ]]; then
+            echo "Command not found"
+            return
+        fi
+
+        # Parse the pipe-separated result - but handle multiline commands properly
+        # Use a temporary file to handle the complex parsing
+        local temp_file=$(mktemp)
+        echo "$result_line" > "$temp_file"
+        
+        # Read the fields, but preserve the command field as-is
+        local line_content="$(cat "$temp_file")"
+        rm "$temp_file"
+        
+        # Split on the first 7 pipe characters, leaving command intact
+        local fields=()
+        local remaining="$line_content"
+        local field_count=0
+        
+        while [[ $field_count -lt 7 && "$remaining" == *"|"* ]]; do
+            local field="${remaining%%|*}"
+            fields+=("$field")
+            remaining="${remaining#*|}"
+            ((field_count++))
+        done
+        
+        # The remaining part is the command (may contain pipes and newlines)
+        local time_val="${fields[1]}"
+        local exit_status="${fields[2]}"
+        local secs="${fields[3]}"
+        local host="${fields[4]}"
+        local dir="${fields[5]}"
+        local session="${fields[6]}"
+        local id="${fields[7]}"
+        local cmd="$remaining"
+
+        atuin-fzf-log "DETAIL: ${result_line}"
+
+        # Add some color to exit status
+        if [[ "${exit_status}" == "NONE" ]]; then
+            exit_status=$(echo "\033[35m${exit_status}\033[0m")
+        elif [[ "${exit_status}" != "0" ]]; then
+            exit_status=$(echo "\033[31m${exit_status}\033[0m")
+        fi
+        
+        # Add color to duration
+        if [[ "${secs}" == "-----" ]]; then
+            secs=$(echo "\033[35m${secs}\033[0m")
+        elif [[ "${secs}" -gt 300 ]]; then
+            secs=$(echo "\033[31m${secs}\033[0m")
+        elif [[ "${secs}" -gt 60 ]]; then
+            secs=$(echo "\033[33m${secs}\033[0m")
+        fi
+
+        echo "Command Details"
+        echo ""
+        echo "Time:      $time_val"
+        echo "Status:    $exit_status" 
+        echo "Duration:  $secs ms"
+        echo "Host:      $host"
+        echo "Directory: $dir"
+        echo "SessionID: $session"
+        echo "CommandID: $id"
+        echo ""
+        echo "Command:"
+        printf "%s\n" "$cmd"
+    }
+
+    atuin-get-command() {
+        local histdb_file=$1
+        local cmd_id=$2
+
+        local query="
+            select
+              command as cmd
+            from
+              history
+            where
+              id='${cmd_id}'
+        "
+        printf "%s" "$(sqlite3 -cmd ".timeout 1000" "${histdb_file}" "$query")"
+    }
+
+    fzf-atuin-history-widget() {
+        local selected num mode exitkey typ cmd_opts cmd_opts_extra
+        local ORIG_FZF_DEFAULT_OPTS=$FZF_DEFAULT_OPTS
+        local query=${BUFFER}
+        local origquery=${BUFFER}
+        local current_host="$(hostname):$(whoami)"
+        
+        atuin-fzf-log "================== START ==================="
+        atuin-fzf-log "original buffers: -:$BUFFER l:$LBUFFER r:$RBUFFER"
+        atuin-fzf-log "original query $query"
+        
+        local atuin_fzf_modes=('session' 'loc' 'global' 'everywhere')
+
+        if [[ -n ${ATUIN_FZF_DEFAULT_MODE} ]]; then
+            mode=${ATUIN_FZF_DEFAULT_MODE}
+        elif [[ -z ${ATUIN_SESSION} ]]; then
+            mode=3  # Changed from 2 to 3 for 1-indexed array
+        else
+            mode=1
+        fi
+        
+        atuin-fzf-log "Start mode ${atuin_fzf_modes[$mode]} ($mode)"
+        exitkey='ctrl-r'
+        cmd_opts_extra=''
+        setopt localoptions noglobsubst noposixbuiltins pipefail 2> /dev/null
+        
+        # Main loop for handling mode switching
+        while [[ "$exitkey" != "" && "$exitkey" != "esc" ]]; do
+            atuin-fzf-log "------------------- TURN -------------------"
+            atuin-fzf-log "Exitkey $exitkey"
+            
+            # Handle function key shortcuts
+            if [[ $exitkey =~ "f." ]]; then
+                mode=${exitkey[$(($MBEGIN+1)),$MEND]}
+                atuin-fzf-log "mode changed to ${atuin_fzf_modes[$mode]} ($mode)"
+            fi
+            
+            atuin-fzf-log "Extra Opts $cmd_opts_extra"
+            
+            # Set options based on mode
+            case "$atuin_fzf_modes[$mode]" in
+                'session')
+                    cmd_opts="-s"
+                    typ="Session local history ${fg[blue]}${ATUIN_SESSION}${reset_color}"
+                    switchhints="${fg[blue]}F1: session${reset_color} ${bold_color}F2: directory${reset_color} ${bold_color}F3: global${reset_color} ${bold_color}F4: everywhere${reset_color}"
+                    ;;
+                'loc')
+                    cmd_opts="-d"
+                    typ="Directory local history ${fg[blue]}$(pwd)${reset_color}"
+                    switchhints="${bold_color}F1: session${reset_color} ${fg[blue]}F2: directory${reset_color} ${bold_color}F3: global${reset_color} ${bold_color}F4: everywhere${reset_color}"
+                    ;;
+                'global')
+                    cmd_opts=""
+                    typ="global history ${fg[blue]}${current_host}${reset_color}"
+                    switchhints="${bold_color}F1: session${reset_color} ${bold_color}F2: directory${reset_color} ${fg[blue]}F3: global${reset_color} ${bold_color}F4: everywhere${reset_color}"
+                    ;;
+                'everywhere')
+                    cmd_opts="-t"
+                    typ='everywhere'
+                    switchhints="${bold_color}F1: session${reset_color} ${bold_color}F2: directory${reset_color} ${bold_color}F3: global${reset_color} ${fg[blue]}F4: everywhere${reset_color}"
+                    ;;
+            esac
+            
+            # MOVE THE MODE INCREMENT TO AFTER THE CASE STATEMENT
+            # Only increment mode if we're cycling with ctrl-r (not function keys)
+            if [[ "$exitkey" == "ctrl-r" ]]; then
+                mode=$(((($mode % $#atuin_fzf_modes) + 1)))  # Changed to handle 1-indexed array properly
+                atuin-fzf-log "mode incremented to ${atuin_fzf_modes[$mode]} ($mode)"
+            fi
+
+            # Prepare FZF options
+            local OPTIONS="$ORIG_FZF_DEFAULT_OPTS
+              --ansi
+              --header='${typ}${NL}${switchhints}${NL}―――――――――――――――――――――――――' --delimiter=' '
+              -n2.. --with-nth=2..
+              --tiebreak=index --expect='esc,ctrl-r,f1,f2,f3,f4'
+              --bind 'ctrl-d:page-down,ctrl-u:page-up'
+              --print-query
+              --preview='source ~/.zshrc >/dev/null 2>&1; atuin-detail ${_ATUIN_HISTDB} {1}' --preview-window=right:50%:wrap
+              --no-hscroll
+              --query='${query}' +m"
+
+            atuin-fzf-log "$OPTIONS"
+
+            result=("${(@f)$(atuin-fzf-query ${cmd_opts} ${cmd_opts_extra} |
+              FZF_DEFAULT_OPTS="${OPTIONS}" ${ATUIN_FZF_CMD})}")
+            
+            # Parse result
+            atuin-fzf-log "returncode was $?"
+            query=$result[1]
+            exitkey=${result[2]}
+            fzf_selected="${${(@s: :)result[3]}[1]}"
+            atuin-fzf-log "Query was      ${query:-<nothing>}"
+            atuin-fzf-log "Exitkey was    ${exitkey:-<NONE>}"
+            atuin-fzf-log "fzf_selected = $fzf_selected"
+        done
+        
+        if [[ "$exitkey" == "esc" ]]; then
+            BUFFER=$origquery
+        else
+            atuin-fzf-log "atuin-get-command ${_ATUIN_HISTDB} ${fzf_selected}"
+            selected=$(atuin-get-command ${_ATUIN_HISTDB} ${fzf_selected})
+            atuin-fzf-log "selected = $selected"
+            BUFFER=$selected
+        fi
+        
+        CURSOR=$#BUFFER
+        zle redisplay
+        atuin-fzf-log "new buffers: -:$BUFFER l:$LBUFFER r:$RBUFFER"
+        atuin-fzf-log "=================== DONE ==================="
+    }
+    
+    zle -N fzf-atuin-history-widget
+    bindkey '^R' fzf-atuin-history-widget
+}
+atuin-setup
+
+
+# Load and initialise completion system
+autoload -Uz compinit
+compinit
+
+
+eval "$(zoxide init zsh)"
+eval "$(fnm env)"
+# source <(fzf --zsh)
+
+# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi 
+export PATH="$HOME/.local/bin:$PATH"
+
+
+# vi-mode kills go to the vi register, which yank can't read — use kill-ring widgets
+bindkey '^U' kill-whole-line
+bindkey '^W' backward-kill-word
+bindkey '^Y' yank
+
+alias rebuild='sudo darwin-rebuild switch --flake ~/dev/dotfiles-mac-nix#mac'

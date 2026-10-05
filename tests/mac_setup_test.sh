@@ -5,13 +5,13 @@
 # setup/mac.sh installs Nix and activates a real nix-darwin system, so it can
 # never be run for real in CI or in a dev checkout. This test instead runs
 # the actual script with PATH masked down to a directory of stub
-# executables (curl, sh, nix, darwin-rebuild, sudo, bash) that simulate a
+# executables (curl, sh, nix, darwin-rebuild, sudo, gh, stow, fnm) that simulate a
 # fresh Mac: they record every invocation to a log and fake just enough
 # filesystem state (a profile script, a "nix" binary) for the script's own
 # logic to progress, without ever touching the real network, Nix store,
 # Homebrew, sudo, or system state. The harness guards every intentional
-# harness/stub write against sandbox escapes, re-homes NVM_DIR under the
-# sandboxed HOME, and clears inherited shell startup hooks before invoking the
+# harness/stub write against sandbox escapes, points FNM_BIN/GH_BIN/STOW_BIN at stubs,
+# and clears inherited shell startup hooks before invoking the
 # script under test.
 #
 # Run: bash tests/mac_setup_test.sh
@@ -20,8 +20,7 @@ set -euo pipefail
 
 REPO_ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." &> /dev/null && pwd)
 # Resolved before PATH gets masked below, so the scenario runner always
-# invokes the real interpreter on the script under test -- never the stub
-# "bash" that simulates the nvm step's PATH-resolved `bash` call.
+# invokes the real interpreter on the script under test.
 REAL_BASH=$(command -v bash)
 
 FAILURES=0
@@ -300,28 +299,33 @@ echo "sudo $*" >> "$STUB_LOG"
 exec "$@"
 EOF
 
-  # Only reached via PATH lookup for the nvm install line in setup/mac.sh;
-  # every other bash invocation in the script uses an absolute /bin/bash.
-  write_stub "$stub_bin/bash" <<'EOF'
+  write_stub "$stub_bin/gh" <<'EOF'
 #!/bin/bash
 set -euo pipefail
 # shellcheck source=/dev/null
 . "${SANDBOX_GUARD:?}" || exit 1
 guard_write_path "$STUB_LOG"
-echo "bash $*" >> "$STUB_LOG"
-if [ -n "${NVM_DIR:-}" ]; then
-  guard_write_path "$NVM_DIR/nvm.sh"
-  mkdir -p "$NVM_DIR"
-  cat > "$NVM_DIR/nvm.sh" <<'NVMSH'
+echo "gh $*" >> "$STUB_LOG"
+exit 0
+EOF
+
+  write_stub "$stub_bin/stow" <<'EOF'
+#!/bin/bash
 set -euo pipefail
 # shellcheck source=/dev/null
 . "${SANDBOX_GUARD:?}" || exit 1
-nvm() {
-  guard_write_path "$STUB_LOG"
-  echo "nvm $*" >> "$STUB_LOG"
-}
-NVMSH
-fi
+guard_write_path "$STUB_LOG"
+echo "stow $*" >> "$STUB_LOG"
+exit 0
+EOF
+
+  write_stub "$stub_bin/fnm" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+# shellcheck source=/dev/null
+. "${SANDBOX_GUARD:?}" || exit 1
+guard_write_path "$STUB_LOG"
+echo "fnm $*" >> "$STUB_LOG"
 exit 0
 EOF
 }
@@ -354,9 +358,8 @@ run_scenario() {
   export STUB_NIX_BIN_DIR="$sandbox/fake-nix/var/nix/profiles/default/bin"
   export NIX_DAEMON_PROFILE="$sandbox/fake-nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
   export HOME="$home_dir"
-  # Re-home NVM_DIR: an inherited absolute NVM_DIR (e.g. from hm-session-vars.sh)
-  # would otherwise leak writes out of the sandbox when the bash stub runs.
-  export NVM_DIR="$HOME/.nvm"
+  # Never let the script reach the host's real Homebrew fnm/stow/gh.
+  export FNM_BIN="$stub_bin/fnm" STOW_BIN="$stub_bin/stow" GH_BIN="$stub_bin/gh"
   startup_env_hook="$sandbox/startup-env-hook.sh"
   startup_env_sentinel="$sandbox/startup-env-ran"
   assert_path_under_sandbox "$startup_env_hook"
@@ -415,6 +418,13 @@ EOF
 
   local invocations
   invocations=$(cat "$log")
+
+  assert_line_count "$invocations" "gh repo clone ynotzort/dotfiles" 1 \
+    "$name: stow dotfiles cloned" && pass "$name: stow dotfiles cloned"
+  assert_contains "$invocations" "stow -d $home_dir/dotfiles -t $home_dir neovim tmux vim wezterm" \
+    "$name: stow packages linked" && pass "$name: stow packages linked"
+  assert_line_count "$invocations" "fnm install --lts" 1 \
+    "$name: default Node.js installed via fnm" && pass "$name: default Node.js installed via fnm"
 
   if [ "$name" = "fresh-machine" ]; then
     assert_contains "$invocations" "curl --proto =https --tlsv1.2 -sSf -L https://install.determinate.systems/nix" \

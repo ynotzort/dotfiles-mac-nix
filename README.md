@@ -1,163 +1,64 @@
-> **This setup is superseded.**
-> The current, maintained Mac setup lives at **<https://github.com/kunchenguid/dotfiles>**.
-> This repo remains available as an older reference.
-
 # dotfiles-mac-nix
 
-<p align="center">
-  <a href="https://discord.gg/Wsy2NpnZDu"
-    ><img
-      alt="Discord"
-      src="https://img.shields.io/discord/1439901831038763092?style=flat-square&label=discord"
-  /></a>
-</p>
+My Mac setup, in code: [Nix](https://nixos.org/), [`nix-darwin`](https://github.com/nix-darwin/nix-darwin), [Home Manager](https://github.com/nix-community/home-manager), and declarative [Homebrew](https://brew.sh/).
+One script turns a fresh Mac into my machine.
 
-This repo is the public, reusable core of my Mac setup.
+Started from [kunchenguid/dotfiles-mac-nix](https://github.com/kunchenguid/dotfiles-mac-nix), then rewritten to match what I actually run.
 
-It is built with [Nix](https://nixos.org/), [`nix-darwin`](https://github.com/nix-darwin/nix-darwin), [Home Manager](https://github.com/nix-community/home-manager), and declarative [Homebrew](https://brew.sh/). The goal is to give macOS developers a reproducible base they can fork and adapt without inheriting someone else's entire private dotfiles repo.
+## What lives where
 
-If you want the longer explanation, see the [blog post](https://open.substack.com/pub/kunchenguid/p/how-i-built-a-reproducible-mac-setup?utm_campaign=post-expanded-share&utm_medium=web).
+- `nix/host.nix` - every Homebrew formula, cask, and tap I use, plus macOS defaults (dark mode, no autocorrect, Finder path bar, tap to click, Dock autohide)
+- `nix/user.nix` - Home Manager: git + LFS, and symlinks for the zsh files below
+- `files/zsh/` - my zsh setup (zap plugins, powerlevel10k, atuin + fzf history search, zoxide, fnm), linked into `~` so edits here are live
+- [`ynotzort/dotfiles`](https://github.com/ynotzort/dotfiles) (private, GNU stow) - nvim, tmux, vim, wezterm; cloned and stowed by the bootstrap script
+- `setup/mac.sh` - fresh-Mac bootstrap
+- `tests/` - sandboxed regression test for the bootstrap script
 
-## What this repo does
+Not here: secrets, machine-local config (`~/.zshrc.local` is sourced if present, never committed), and the git identity, which stays in `~/.gitconfig` for now.
 
-It gives you a structured starting point for managing a Mac setup in code:
+## New Mac
 
-- bootstrap a fresh Mac with `setup/mac.sh`
-- configure macOS defaults with `nix-darwin`
-- manage user packages and shell behavior with Home Manager
-- install GUI apps and macOS-native tools declaratively with Homebrew
-- keep selected app config in the repo and link it into place
-
-I include [WezTerm](https://wezfurlong.org/wezterm/) as the one concrete app-config example because it is real enough to demonstrate the pattern without dragging in the more personal parts of my workflow.
-
-## What is intentionally not included
-
-This repo does **not** try to mirror my entire machine.
-
-I left out things that are too personal or too workflow-specific to make a good public starter repo, including:
-
-- editor config
-- custom shell systems
-- personal scripts
-- AI tooling
-- secrets and tokens
-- private automation
-
-The goal is to provide a reusable foundation that you can make your own.
-
-## Repo structure
-
-- `setup/mac.sh` - bootstrap a fresh Mac
-- `setup/README.md` - bootstrap usage and testing notes
-- `flake.nix` - top-level Nix wiring
-- `nix/host.nix` - machine-level macOS config (nix-darwin)
-- `nix/user.nix` - user environment: packages, shell, git, fonts, dotfiles (Home Manager)
-- `files/.config/wezterm/wezterm.lua` - example app config linked into place
-- `tests/` - regression tests for the bootstrap script
-- `blog.md` - local copy of the [blog post](https://open.substack.com/pub/kunchenguid/p/how-i-built-a-reproducible-mac-setup?utm_campaign=post-expanded-share&utm_medium=web)
-
-## How to use it
-
-### 1. Clone the repo
+Assumes Apple Silicon and a user account named `w` (the username is hard-coded in `flake.nix` and `nix/`).
 
 ```bash
-git clone git@github.com:kunchenguid/dotfiles-mac-nix.git ~/github/dotfiles-mac-nix
-cd ~/github/dotfiles-mac-nix
+git clone https://github.com/ynotzort/dotfiles-mac-nix.git ~/dev/dotfiles-mac-nix
+bash ~/dev/dotfiles-mac-nix/setup/mac.sh
 ```
 
-### 2. Replace the placeholders
+In one run, the script:
 
-Update values like:
+1. installs Nix (Determinate installer) and Homebrew
+2. activates nix-darwin + Home Manager, which installs every Homebrew package and links the zsh files
+3. logs `gh` in (browser), clones `ynotzort/dotfiles` to `~/dotfiles`, and stows `neovim tmux vim wezterm`
+4. installs the LTS Node.js via `fnm`
 
-- `yourname`
-- `/Users/yourname`
-- `Your Name`
-- `you@example.com`
+Open a new terminal afterwards. zsh clones zap and its plugins on first start.
 
-If you are on an Intel Mac, change the system target in `flake.nix` from:
+## Day to day
 
-```nix
-system = "aarch64-darwin";
-```
-
-to:
-
-```nix
-system = "x86_64-darwin";
-```
-
-### 3. Run the bootstrap script on a fresh Mac
-
-This repo is primarily set up for Apple Silicon Macs. If you are on Intel, make the architecture change above before you run the bootstrap script.
+Edit the config, then:
 
 ```bash
-bash setup/mac.sh
+rebuild   # sudo darwin-rebuild switch --flake ~/dev/dotfiles-mac-nix#mac
 ```
 
-The script will:
+Installed something with `brew install`? Add it to `nix/host.nix` too, or the next Mac won't have it.
+Homebrew cleanup is `"none"`, so a rebuild never uninstalls anything that's missing from the list.
+Switch it to `"zap"` once the list is complete if you want it enforced.
 
-- install [Determinate Nix Installer](https://determinate.systems/nix-installer/) if needed
-- install [Homebrew](https://brew.sh/) if needed
-- apply the `nix-darwin` + Home Manager config
-- install [`nvm`](https://github.com/nvm-sh/nvm) and a default Node.js version if needed
+Where things go:
 
-On a fresh machine, the bootstrap is designed to complete in one run.
-After the Determinate installer runs, the script sources the Nix daemon profile into the current shell and uses an absolute `nix` path for the first `nix-darwin` activation, so you should not need a second shell or a second setup run.
+- GUI apps and most CLI tools: Homebrew in `nix/host.nix`
+- shell config: `files/zsh/`
+- editor and terminal config: the stow repo
+- language toolchains: their own managers (fnm, uv, rustup, rbenv)
 
-The `NIX_DAEMON_PROFILE` and `DARWIN_REBUILD_BIN` environment variables are only there so the regression test can point the script at sandboxed paths.
-Normal use should leave them unset.
+## Testing the bootstrap
 
-## How I manage changes later
-
-After the initial bootstrap, the usual workflow is:
-
-1. edit the Nix config
-2. run:
-
-```bash
-rebuild
-```
-
-This alias is included in the shell config and expands to the repo path used in this guide:
-
-```bash
-/run/current-system/sw/bin/darwin-rebuild switch --flake ~/github/dotfiles-mac-nix#mac
-```
-
-## Testing
-
-Do not run `setup/mac.sh` against a development or CI machine just to test it.
-Run the sandboxed regression test instead:
+Never run `setup/mac.sh` on an already set-up machine just to try it. Use:
 
 ```bash
 bash tests/mac_setup_test.sh
 ```
 
-It runs the real script logic with stub executables for `curl`, `sh`, `nix`, `darwin-rebuild`, `sudo`, and `bash`, covering both a fresh-machine single-pass bootstrap and the already-bootstrapped fast path.
-The harness also guards every harness/stub write against sandbox escapes, re-homes `NVM_DIR` under the sandboxed `HOME`, and unsets inherited `BASH_ENV`/`ENV` hooks before invoking the script under test.
-
-## Where to add new tools
-
-My rough rule of thumb:
-
-- use **Home Manager / Nix** for reproducible baseline CLI tools, fonts, shell utilities, and user environment packages
-- use **Homebrew** for GUI apps and macOS-native tools that fit naturally there
-- use **ecosystem-specific package managers** like `npm` when that is the right abstraction for the tool
-
-A good setup does not force every tool through one package manager. It just makes the ownership of each layer clear.
-
-## Why this setup looks like this
-
-I wanted a setup that was:
-
-- reproducible on a new Mac
-- structured enough to maintain
-- pragmatic about macOS
-- publishable without oversharing the rest of my workflow
-
-That is why this repo focuses on the reusable core.
-
-## Related
-
-- Long-form write-up: [blog post](https://open.substack.com/pub/kunchenguid/p/how-i-built-a-reproducible-mac-setup?utm_campaign=post-expanded-share&utm_medium=web)
-- GitHub repo: <https://github.com/kunchenguid/dotfiles-mac-nix>
+It runs the real script against stub executables in a temp sandbox and covers both a fresh Mac and an already-bootstrapped one. See `AGENTS.md` for details.
