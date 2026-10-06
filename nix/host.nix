@@ -14,6 +14,7 @@
       "can1357/tap"
       "darrylmorley/whatcable"
       "pantsbuild/tap"
+      "FelixKratz/formulae"
     ];
     brews = [
       "aircrack-ng"
@@ -83,6 +84,7 @@
       "db-browser-for-sqlite"
       "dbeaver-community"
       "firefox@developer-edition"
+      "font-hack-nerd-font"
       "flameshot"
       "ghostty@tip"
       "godot"
@@ -147,6 +149,12 @@
     };
 
     dock.autohide = true;
+
+    # Settings without a dedicated nix-darwin option.
+    CustomUserPreferences.NSGlobalDomain = {
+      # Ctrl+Cmd+drag anywhere in a window to move it.
+      NSWindowShouldDragOnGesture = true;
+    };
   };
 
   environment.systemPath = [
