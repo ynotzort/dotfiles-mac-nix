@@ -445,4 +445,4 @@ bindkey '^U' kill-whole-line
 bindkey '^W' backward-kill-word
 bindkey '^Y' yank
 
-alias rebuild='sudo darwin-rebuild switch --flake ~/dev/dotfiles-mac-nix#mac'
+alias rebuild='sudo darwin-rebuild switch --flake ~/dev/dotfiles-mac-nix#mac --impure'

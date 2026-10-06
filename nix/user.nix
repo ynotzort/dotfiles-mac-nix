@@ -1,12 +1,12 @@
-{ config, ... }:
+{ config, user, ... }:
 
 let
   dotfilesDir = "${config.home.homeDirectory}/dev/dotfiles-mac-nix";
   link = f: config.lib.file.mkOutOfStoreSymlink "${dotfilesDir}/files/zsh/${f}";
 in
 {
-  home.username = "w";
-  home.homeDirectory = "/Users/w";
+  home.username = user;
+  home.homeDirectory = "/Users/${user}";
   home.stateVersion = "23.11";
   home.language.base = "en_US.UTF-8";
 

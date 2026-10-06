@@ -1,6 +1,6 @@
 # Bootstrap
 
-Run `setup/mac.sh` once on a fresh Mac (Apple Silicon, user `w`) after cloning this repo to `~/dev/dotfiles-mac-nix`:
+Run `setup/mac.sh` once on a fresh Mac (Apple Silicon, any username) after cloning this repo to `~/dev/dotfiles-mac-nix`:
 
 ```bash
 bash setup/mac.sh
@@ -17,7 +17,7 @@ What the script does:
 
 It completes in a single run. Right after installing Nix it sources the daemon profile into the current shell, and the first `nix-darwin` activation resolves `nix` by absolute path with the experimental features it needs.
 
-After that, use `rebuild` (`sudo darwin-rebuild switch --flake ~/dev/dotfiles-mac-nix#mac`).
+After that, use `rebuild` (`sudo darwin-rebuild switch --flake ~/dev/dotfiles-mac-nix#mac --impure`).
 
 `NIX_DAEMON_PROFILE`, `DARWIN_REBUILD_BIN`, `GH_BIN`, `STOW_BIN` and `FNM_BIN` can be overridden only so the regression test can point the script at sandboxed stubs. Leave them unset for normal use.
 

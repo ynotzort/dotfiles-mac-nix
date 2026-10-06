@@ -41,7 +41,7 @@ fi
 # can point at a sandboxed binary instead of the real one.)
 : "${DARWIN_REBUILD_BIN:=/run/current-system/sw/bin/darwin-rebuild}"
 if [ -x "$DARWIN_REBUILD_BIN" ]; then
-  sudo "$DARWIN_REBUILD_BIN" switch --flake "$DOTFILES_DIR#mac"
+  sudo "$DARWIN_REBUILD_BIN" switch --flake "$DOTFILES_DIR#mac" --impure
 else
   # First activation: nix-darwin has never run, so darwin-rebuild doesn't
   # exist yet and has to be fetched via `nix run`. Resolve nix by absolute
@@ -50,7 +50,7 @@ else
   # already have them.
   NIX_BIN=$(command -v nix || echo /nix/var/nix/profiles/default/bin/nix)
   sudo "$NIX_BIN" --extra-experimental-features "nix-command flakes" \
-    run nix-darwin/master#darwin-rebuild -- switch --flake "$DOTFILES_DIR#mac"
+    run nix-darwin/master#darwin-rebuild -- switch --flake "$DOTFILES_DIR#mac" --impure
 fi
 
 # Clone the (private) stow dotfiles and link nvim, tmux, vim, wezterm into

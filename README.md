@@ -18,7 +18,7 @@ Not here: secrets, machine-local config (`~/.zshrc.local` is sourced if present,
 
 ## New Mac
 
-Assumes Apple Silicon and a user account named `w` (the username is hard-coded in `flake.nix` and `nix/`).
+Assumes Apple Silicon. Works for any macOS username: the flake reads it from the environment (hence `--impure`).
 
 ```bash
 git clone https://github.com/ynotzort/dotfiles-mac-nix.git ~/dev/dotfiles-mac-nix
@@ -39,7 +39,7 @@ Open a new terminal afterwards. zsh clones zap and its plugins on first start.
 Edit the config, then:
 
 ```bash
-rebuild   # sudo darwin-rebuild switch --flake ~/dev/dotfiles-mac-nix#mac
+rebuild   # sudo darwin-rebuild switch --flake ~/dev/dotfiles-mac-nix#mac --impure
 ```
 
 Installed something with `brew install`? Add it to `nix/host.nix` too, or the next Mac won't have it.

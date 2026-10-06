@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, user, ... }:
 
 {
   # If you use Determinate Nix Installer (recommended), let it manage Nix itself.
@@ -113,29 +113,16 @@
       "vlc"
       "wezterm@nightly"
       "zen"
-      "alt-tab"
-      "anydesk"
-      "claude"
-      "drawio"
-      "google-chrome"
-      "google-drive"
       "helium-browser"
       "kde-connect"
       "libreoffice"
-      "notion"
-      "obsidian"
-      "phoenix-code"
-      "slack"
       "tailscale-app"
-      "unity-hub"
-      "zed"
-      "zoom"
     ];
   };
 
-  system.primaryUser = "w";
-  users.users.w = {
-    home = "/Users/w";
+  system.primaryUser = user;
+  users.users.${user} = {
+    home = "/Users/${user}";
     shell = pkgs.zsh;
   };
 
@@ -164,8 +151,15 @@
 
   environment.systemPath = [
     "/run/current-system/sw/bin"
-    "/etc/profiles/per-user/w/bin"
+    "/etc/profiles/per-user/${user}/bin"
   ];
+
+  # Tighter menu bar icon spacing. These are -currentHost (ByHost) prefs, which
+  # system.defaults can't write; activation runs as root, so write as the user.
+  system.activationScripts.postActivation.text = ''
+    sudo -u ${user} defaults -currentHost write -globalDomain NSStatusItemSpacing -int 2
+    sudo -u ${user} defaults -currentHost write -globalDomain NSStatusItemSelectionPadding -int 2
+  '';
 
   system.stateVersion = 6;
 }

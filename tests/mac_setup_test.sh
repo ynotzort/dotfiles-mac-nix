@@ -423,6 +423,8 @@ EOF
     "$name: stow dotfiles cloned" && pass "$name: stow dotfiles cloned"
   assert_contains "$invocations" "stow -d $home_dir/dotfiles -t $home_dir neovim tmux vim wezterm" \
     "$name: stow packages linked" && pass "$name: stow packages linked"
+  assert_contains "$invocations" "#mac --impure" \
+    "$name: flake built with --impure (username comes from the environment)" && pass "$name: flake built with --impure"
   assert_line_count "$invocations" "fnm install --lts" 1 \
     "$name: default Node.js installed via fnm" && pass "$name: default Node.js installed via fnm"
 
