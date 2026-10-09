@@ -83,6 +83,7 @@
       "cutter"
       "db-browser-for-sqlite"
       "dbeaver-community"
+      "finetune"
       "firefox@developer-edition"
       "font-hack-nerd-font"
       "flameshot"
