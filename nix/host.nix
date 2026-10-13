@@ -110,6 +110,7 @@
       "temurin"
       "temurin@17"
       "tor-browser"
+      "vicinae"
       "visual-studio-code"
       "vlc"
       "wezterm@nightly"
