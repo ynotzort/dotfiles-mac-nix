@@ -113,6 +113,7 @@
       "vicinae"
       "visual-studio-code"
       "vlc"
+      "vorssaint"
       "wezterm@nightly"
       "zen"
       "helium-browser"
