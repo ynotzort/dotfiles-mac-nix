@@ -44,6 +44,7 @@
       "magic-wormhole"
       "mas"
       "maven"
+      "mole"
       "ncdu"
       "nono"
       "can1357/tap/omp"
