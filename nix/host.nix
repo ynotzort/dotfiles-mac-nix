@@ -100,7 +100,6 @@
       "localsend"
       "middleclick"
       "neovide-app"
-      "onlyoffice"
       "pantsbuild/tap/pants"
       "processspy"
       "raycast"
