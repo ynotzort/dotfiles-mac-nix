@@ -37,6 +37,7 @@
       "glpk"
       "gradle"
       "htop"
+      "herdr"
       "jadx"
       "jq"
       "lazygit"
