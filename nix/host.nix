@@ -103,7 +103,6 @@
       "neovide-app"
       "pantsbuild/tap/pants"
       "processspy"
-      "raycast"
       "rectangle"
       "stats"
       "sublime-merge"
