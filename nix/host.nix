@@ -99,6 +99,7 @@
       "keepingyouawake"
       "keka"
       "localsend"
+      "macpacker"
       "middleclick"
       "neovide-app"
       "pantsbuild/tap/pants"
